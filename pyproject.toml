@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools", "versioneer[toml]==0.29"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "distributed_heterogeneous"
+authors = [
+  # TODO: authors
+]
+description = "Heterogeneous Cluster extension to Dask Distributed"
+readme = "README.md"
+requires-python = ">=3.9"
+keywords = ["distributed", "heterogeneous"]
+license = {text = "BSD-3-Clause"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "distributed",
+]
+dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/coiled/distributed-heterogeneous"
+Source = "https://github.com/coiled/distributed-heterogeneous"
+
+[tool.setuptools.packages.find]
+exclude = ["*tests*"]
+namespaces = false
+
+[tool.pytest.ini_options]
+minversion = "6.0" 
+addopts = "-v"
+testpaths = [
+  "distributed_heterogeneous/tests"
+]
+timeout = 300
+
+[tool.versioneer]
+VCS = "git"
+style = "pep440"
+versionfile_source = "distributed_heterogeneous/_version.py"
+versionfile_build = "distributed_heterogeneous/_version.py"
+tag_prefix = ""
+parentdir_prefix = "distributed-heterogeneous"

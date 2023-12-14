@@ -1,0 +1,15 @@
+name: distributed-heterogeneous
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - distributed[complete]
+  - python=3.10
+  - pip
+  - bokeh
+  - pyarrow
+  - pytest
+  - pytest-faulthandler
+  - pytest-repeat
+  - pytest-rerunfailures
+  - pytest-timeout
