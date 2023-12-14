@@ -6,7 +6,6 @@ from contextlib import suppress
 from typing import Any
 
 from dask.utils import parse_bytes
-
 from distributed.core import Status
 from distributed.deploy.adaptive import Adaptive
 from distributed.deploy.spec import SpecCluster
@@ -94,60 +93,71 @@ class HeterogeneousCluster(SpecCluster):
     """
 
     def __init__(self, *args, **kwargs):
-        from distributed import Worker
-
         super().__init__(*args, **kwargs)
         self._next_worker_id = defaultdict(int)
 
     def scale(self, n=0, memory=None, cores=None, pool=None):
+        """Scale a cluster to n workers for a given pool
+
+        Parameters
+        ----------
+        n : int
+            Target number of workers for the pool
+        memory : str
+            Target memory per worker for the pool
+        cores : int
+            Target cores per worker for the pool
+        pool : str | list
+            Name of the pool to scale. If not provided, scale all pools.
+            Can be a list of pools in which case all pools will be set to `n`.
+        """
         if not self._supports_scaling:
             raise RuntimeError("Cluster does not support scaling.")
 
         if pool is None:
-            if len(self.new_spec) > 1:
-                raise ValueError(
-                    "to use scale(pool=...) you must provide a pool as "
-                    "cluster contains more than one worker pool"
+            pools = list(self.new_spec)
+        else:
+            pools = [pool]
+        del pool
+        for pool in pools:
+            if pool not in self.new_spec:
+                raise ValueError(f"Unknown worker pool: {pool}")
+
+            if memory is not None:
+                n = max(
+                    n,
+                    int(math.ceil(parse_bytes(memory) / self._memory_per_worker(pool))),
                 )
-            pool = list(self.new_spec)[0]
-        if pool not in self.new_spec:
-            raise ValueError(f"Unknown worker pool: {pool}")
 
-        if memory is not None:
-            n = max(
-                n,
-                int(math.ceil(parse_bytes(memory) / self._memory_per_worker(pool))),
-            )
+            if cores is not None:
+                n = max(n, int(math.ceil(cores / self._threads_per_worker(pool))))
 
-        if cores is not None:
-            n = max(n, int(math.ceil(cores / self._threads_per_worker(pool))))
+            # Get workers that belong to the given pool
+            pool_spec = self._pool_spec(pool)
 
-        # Get workers that belong to the given pool
-        pool_spec = self._pool_spec(pool)
+            if len(pool_spec) > n:
+                not_yet_launched = set(pool_spec) - {
+                    v["name"] for v in self.scheduler_info["workers"].values()
+                }
+                while len(pool_spec) > n and not_yet_launched:
+                    w = not_yet_launched.pop()
+                    del self.worker_spec[w]
+                    del pool_spec[w]
 
-        if len(pool_spec) > n:
-            not_yet_launched = set(pool_spec) - {
-                v["name"] for v in self.scheduler_info["workers"].values()
-            }
-            while len(pool_spec) > n and not_yet_launched:
-                w = not_yet_launched.pop()
-                del self.worker_spec[w]
-                del pool_spec[w]
+            while len(pool_spec) > n:
+                w, _ = pool_spec.popitem()
+                self.worker_spec.pop(w)
 
-        while len(pool_spec) > n:
-            w, _ = pool_spec.popitem()
-            self.worker_spec.pop(w)
+            num_workers = len(pool_spec)
+            if self.status not in (Status.closing, Status.closed):
+                while num_workers < n:
+                    self.worker_spec.update(self.new_worker_spec(pool))
+                    num_workers += 1
 
-        num_workers = len(pool_spec)
-        if self.status not in (Status.closing, Status.closed):
-            while num_workers < n:
-                self.worker_spec.update(self.new_worker_spec(pool))
-                num_workers += 1
+            self.loop.add_callback(self._correct_state)
 
-        self.loop.add_callback(self._correct_state)
-
-        if self.asynchronous:
-            return NoOpAwaitable()
+            if self.asynchronous:
+                return NoOpAwaitable()
 
     def _threads_per_worker(self, pool: str) -> int:
         """Return the number of threads per worker for new workers"""
